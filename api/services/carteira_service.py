@@ -1,6 +1,6 @@
 # api/services/carteira_service.py
 import hashlib
-from typing import List
+from typing import Any, Dict, List, Optional
 from decimal import Decimal
 
 from api.services.cotacao_service import CoinbaseService, get_coinbase_service
@@ -8,7 +8,7 @@ from api.persistence.repositories.carteira_repository import CarteiraRepository
 from api.models.carteira_models import (
     Carteira, CarteiraCriada, DepositoRequest, SaldoCarteira, 
     SaqueRequest, TransacaoResponse, ConversaoRequest, 
-    ConversaoResponse, CotacaoResponse
+    ConversaoResponse, CotacaoResponse, TransferenciaRequest, TransferenciaResponse
 )
 
 
@@ -193,6 +193,75 @@ class CarteiraService:
             saldo_origem_final=resultado["saldo_origem_final"],
             saldo_destino_final=resultado["saldo_destino_final"]
         )
+    
+    def realizar_transferencia(self, endereco_origem: str, transferencia: TransferenciaRequest) -> TransferenciaResponse:
+        """
+        Realiza transferência entre carteiras.
+        """
+        # 1. Validações iniciais
+        carteira_origem = self.carteira_repo.buscar_por_endereco(endereco_origem)
+        if not carteira_origem or carteira_origem["status"] != "ATIVA":
+            raise ValueError("Carteira origem não encontrada ou bloqueada")
+        
+        carteira_destino = self.carteira_repo.buscar_por_endereco(transferencia.endereco_destino)
+        if not carteira_destino or carteira_destino["status"] != "ATIVA":
+            raise ValueError("Carteira destino não encontrada ou bloqueada")
+        
+        if transferencia.valor <= 0:
+            raise ValueError("Valor da transferência deve ser positivo")
+        
+        if not self.carteira_repo.validar_chave_privada(endereco_origem, transferencia.hash_chave):
+            raise ValueError("Chave privada inválida")
+        
+        if endereco_origem == transferencia.endereco_destino:
+            raise ValueError("Não é possível transferir para a mesma carteira")
+        
+        # 2. Calcula taxa (exemplo: 1% para transferências, mínimo 0.01)
+        taxa_percentual = 1.0  # 1% de taxa
+        taxa_valor = max(transferencia.valor * taxa_percentual / 100, 0.01)  # Mínimo 0.01
+        
+        # 3. Realiza transferência no repository
+        try:
+            resultado = self.carteira_repo.registrar_transferencia(
+                endereco_origem=endereco_origem,
+                endereco_destino=transferencia.endereco_destino,
+                id_moeda=transferencia.id_moeda,
+                valor=transferencia.valor,
+                taxa_valor=taxa_valor
+            )
+            
+            return TransferenciaResponse(
+                id_transferencia=resultado["id_transferencia"],
+                endereco_origem=endereco_origem,
+                endereco_destino=transferencia.endereco_destino,
+                id_moeda=transferencia.id_moeda,
+                valor=transferencia.valor,
+                taxa_valor=taxa_valor,
+                data_hora=resultado["data_hora"],
+                saldo_origem_final=resultado["saldo_origem_final"],
+                saldo_destino_final=resultado["saldo_destino_final"]
+            )
+            
+        except ValueError as e:
+            raise ValueError(str(e))
+        except Exception as e:
+            raise Exception(f"Erro na transferência: {str(e)}")
+    
+    def obter_transferencias(self, endereco_carteira: str) -> List[Dict[str, Any]]:
+        """
+        Obtém todas as transferências de uma carteira.
+        """
+        carteira = self.carteira_repo.buscar_por_endereco(endereco_carteira)
+        if not carteira:
+            raise ValueError("Carteira não encontrada")
+        
+        return self.carteira_repo.obter_transferencias_por_carteira(endereco_carteira)
+    
+    def obter_transferencia(self, id_transferencia: int) -> Optional[Dict[str, Any]]:
+        """
+        Obtém uma transferência específica pelo ID.
+        """
+        return self.carteira_repo.obter_transferencia_por_id(id_transferencia)
     
     async def close(self):
         """Fecha o serviço da Coinbase"""

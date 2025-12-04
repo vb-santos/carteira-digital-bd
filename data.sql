@@ -60,7 +60,7 @@ VALUES
     (
         '5ef83ac052d884f0cd86a8f876165513',
         'ba45ccec895ca76d693afe6c187ac2746ad09c781cab8e1f3bc7d8a0c0f1e7bb',
-        'BLOQUEADA'
+        'ATIVA'
     );
 
 INSERT IGNORE INTO saldo_carteira (endereco_carteira, id_moeda, saldo)
@@ -87,7 +87,22 @@ CREATE TABLE
     );
 
 CREATE UNIQUE INDEX conversao_id_conversao_uindex ON conversao (id_conversao);
-
 CREATE INDEX conversao_endereco_carteira_index ON conversao (endereco_carteira);
 
-CREATE TABLE 
+CREATE TABLE
+    IF NOT EXISTS transferencia (
+        id_transferencia BIGINT AUTO_INCREMENT PRIMARY KEY,
+        endereco_origem VARCHAR(32) NOT NULL,
+        endereco_destino VARCHAR(32) NOT NULL,
+        id_moeda SMALLINT NOT NULL,
+        valor DECIMAL(18, 4) NOT NULL,
+        taxa_valor DECIMAL(5, 2) NULL,
+        data_hora DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        CONSTRAINT transferencia_endereco_origem_fk FOREIGN KEY (endereco_origem) REFERENCES carteira (endereco_carteira) ON UPDATE CASCADE ON DELETE CASCADE,
+        CONSTRAINT transferencia_endereco_destino_fk FOREIGN KEY (endereco_destino) REFERENCES carteira (endereco_carteira) ON UPDATE CASCADE ON DELETE CASCADE,
+        CONSTRAINT transferencia_id_moeda_fk FOREIGN KEY (id_moeda) REFERENCES moeda (id_moeda) ON UPDATE CASCADE ON DELETE CASCADE
+    );
+
+CREATE UNIQUE INDEX transferencia_id_transferencia_uindex ON transferencia (id_transferencia);
+CREATE INDEX transferencia_endereco_origem_index ON transferencia (endereco_origem);
+CREATE INDEX transferencia_endereco_destino_index ON transferencia (endereco_destino);

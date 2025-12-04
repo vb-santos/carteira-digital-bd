@@ -519,3 +519,250 @@ class CarteiraRepository:
             except Exception as e:
                 conn.execute(text("ROLLBACK"))
                 raise e
+    
+    def registrar_transferencia(
+        self,
+        endereco_origem: str,
+        endereco_destino: str,
+        id_moeda: int,
+        valor: float,
+        taxa_valor: float
+    ) -> Dict[str, Any]:
+        """
+        Registra uma transferência entre carteiras.
+        Deve ser executado dentro de uma transação.
+        """
+        with get_connection() as conn:
+            try:
+                # 1. Valida carteira origem (ativa)
+                carteira_origem = conn.execute(
+                    text("""
+                        SELECT status FROM carteira 
+                        WHERE endereco_carteira = :endereco
+                    """),
+                    {"endereco": endereco_origem}
+                ).mappings().first()
+                
+                if not carteira_origem or carteira_origem['status'] != 'ATIVA':
+                    raise ValueError("Carteira origem não encontrada ou bloqueada")
+                
+                # 2. Valida carteira destino (ativa)
+                carteira_destino = conn.execute(
+                    text("""
+                        SELECT status FROM carteira 
+                        WHERE endereco_carteira = :endereco
+                    """),
+                    {"endereco": endereco_destino}
+                ).mappings().first()
+                
+                if not carteira_destino or carteira_destino['status'] != 'ATIVA':
+                    raise ValueError("Carteira destino não encontrada ou bloqueada")
+                
+                # 3. Verifica se não é transferência para mesma carteira
+                if endereco_origem == endereco_destino:
+                    raise ValueError("Não é possível transferir para a mesma carteira")
+                
+                # 4. Verifica saldo da carteira origem (incluindo taxa)
+                valor_total = valor + taxa_valor
+                
+                saldo_origem = conn.execute(
+                    text("""
+                        SELECT saldo FROM saldo_carteira 
+                        WHERE endereco_carteira = :endereco AND id_moeda = :id_moeda
+                    """),
+                    {"endereco": endereco_origem, "id_moeda": id_moeda}
+                ).mappings().first()
+                
+                if not saldo_origem or float(saldo_origem['saldo']) < valor_total:
+                    raise ValueError("Saldo insuficiente para realizar a transferência (valor + taxa)")
+                
+                # 5. Debitar carteira origem (valor + taxa)
+                conn.execute(
+                    text("""
+                        UPDATE saldo_carteira 
+                        SET saldo = saldo - :valor_total,
+                            data_atualizacao = CURRENT_TIMESTAMP
+                        WHERE endereco_carteira = :endereco_origem 
+                        AND id_moeda = :id_moeda
+                    """),
+                    {
+                        "valor_total": valor_total,
+                        "endereco_origem": endereco_origem,
+                        "id_moeda": id_moeda
+                    }
+                )
+                
+                # 6. Creditar carteira destino (apenas valor, sem taxa)
+                saldo_destino = conn.execute(
+                    text("""
+                        SELECT saldo FROM saldo_carteira 
+                        WHERE endereco_carteira = :endereco AND id_moeda = :id_moeda
+                    """),
+                    {"endereco": endereco_destino, "id_moeda": id_moeda}
+                ).mappings().first()
+                
+                if saldo_destino:
+                    # Atualiza saldo existente
+                    conn.execute(
+                        text("""
+                            UPDATE saldo_carteira 
+                            SET saldo = saldo + :valor,
+                                data_atualizacao = CURRENT_TIMESTAMP
+                            WHERE endereco_carteira = :endereco_destino 
+                            AND id_moeda = :id_moeda
+                        """),
+                        {
+                            "valor": valor,
+                            "endereco_destino": endereco_destino,
+                            "id_moeda": id_moeda
+                        }
+                    )
+                else:
+                    # Cria novo registro de saldo
+                    conn.execute(
+                        text("""
+                            INSERT INTO saldo_carteira 
+                            (endereco_carteira, id_moeda, saldo, data_atualizacao) 
+                            VALUES (:endereco_destino, :id_moeda, :valor, CURRENT_TIMESTAMP)
+                        """),
+                        {
+                            "endereco_destino": endereco_destino,
+                            "id_moeda": id_moeda,
+                            "valor": valor
+                        }
+                    )
+                
+                # 7. Registra a transferência
+                result = conn.execute(
+                    text("""
+                        INSERT INTO transferencia 
+                        (endereco_origem, endereco_destino, id_moeda, valor, taxa_valor, data_hora) 
+                        VALUES (:endereco_origem, :endereco_destino, :id_moeda, :valor, :taxa_valor, CURRENT_TIMESTAMP)
+                    """),
+                    {
+                        "endereco_origem": endereco_origem,
+                        "endereco_destino": endereco_destino,
+                        "id_moeda": id_moeda,
+                        "valor": valor,
+                        "taxa_valor": taxa_valor
+                    }
+                )
+                
+                id_transferencia = result.lastrowid
+                
+                # 8. Registra movimentações (saque na origem, depósito no destino)
+                # Saque na carteira origem
+                conn.execute(
+                    text("""
+                        INSERT INTO deposito_saque 
+                        (endereco_carteira, id_moeda, tipo, valor, taxa_valor, data_hora) 
+                        VALUES (:endereco, :id_moeda, 'SAQUE', :valor, :taxa_valor, CURRENT_TIMESTAMP)
+                    """),
+                    {
+                        "endereco": endereco_origem,
+                        "id_moeda": id_moeda,
+                        "valor": valor,
+                        "taxa_valor": valor_total
+                    }
+                )
+                
+                # Depósito na carteira destino
+                conn.execute(
+                    text("""
+                        INSERT INTO deposito_saque 
+                        (endereco_carteira, id_moeda, tipo, valor, taxa_valor, data_hora) 
+                        VALUES (:endereco, :id_moeda, 'DEPOSITO', :valor, :valor, CURRENT_TIMESTAMP)
+                    """),
+                    {
+                        "endereco": endereco_destino,
+                        "id_moeda": id_moeda,
+                        "valor": valor,
+                        "taxa_valor": valor
+                    }
+                )
+                
+                # 9. Obtém saldos finais
+                saldo_origem_final = conn.execute(
+                    text("""
+                        SELECT saldo FROM saldo_carteira 
+                        WHERE endereco_carteira = :endereco AND id_moeda = :id_moeda
+                    """),
+                    {"endereco": endereco_origem, "id_moeda": id_moeda}
+                ).mappings().first()['saldo']
+                
+                saldo_destino_final = conn.execute(
+                    text("""
+                        SELECT saldo FROM saldo_carteira 
+                        WHERE endereco_carteira = :endereco AND id_moeda = :id_moeda
+                    """),
+                    {"endereco": endereco_destino, "id_moeda": id_moeda}
+                ).mappings().first()['saldo']
+                
+                # 10. Obtém data da transferência
+                data_transferencia = conn.execute(
+                    text("""
+                        SELECT data_hora FROM transferencia 
+                        WHERE id_transferencia = :id_transferencia
+                    """),
+                    {"id_transferencia": id_transferencia}
+                ).mappings().first()['data_hora']
+                
+                return {
+                    "id_transferencia": id_transferencia,
+                    "saldo_origem_final": float(saldo_origem_final),
+                    "saldo_destino_final": float(saldo_destino_final),
+                    "data_hora": data_transferencia
+                }
+                
+            except Exception as e:
+                conn.rollback()
+                raise e
+    
+    def obter_transferencias_por_carteira(self, endereco_carteira: str) -> List[Dict[str, Any]]:
+        """
+        Obtém todas as transferências relacionadas a uma carteira
+        (como origem ou como destino).
+        """
+        with get_connection() as conn:
+            rows = conn.execute(
+                text("""
+                    SELECT 
+                        id_transferencia,
+                        endereco_origem,
+                        endereco_destino,
+                        id_moeda,
+                        valor,
+                        taxa_valor,
+                        data_hora
+                    FROM transferencia
+                    WHERE endereco_origem = :endereco 
+                    OR endereco_destino = :endereco
+                    ORDER BY data_hora DESC
+                """),
+                {"endereco": endereco_carteira}
+            ).mappings().all()
+            
+            return [dict(row) for row in rows]
+    
+    def obter_transferencia_por_id(self, id_transferencia: int) -> Optional[Dict[str, Any]]:
+        """
+        Obtém uma transferência específica pelo ID.
+        """
+        with get_connection() as conn:
+            row = conn.execute(
+                text("""
+                    SELECT 
+                        id_transferencia,
+                        endereco_origem,
+                        endereco_destino,
+                        id_moeda,
+                        valor,
+                        taxa_valor,
+                        data_hora
+                    FROM transferencia
+                    WHERE id_transferencia = :id
+                """),
+                {"id": id_transferencia}
+            ).mappings().first()
+            
+            return dict(row) if row else None

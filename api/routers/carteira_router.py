@@ -1,13 +1,13 @@
 # api/routers/carteira_router.py
 from fastapi import APIRouter, HTTPException, Depends
-from typing import List
+from typing import Any, Dict, List
 
 from api.services.carteira_service import CarteiraService
 from api.persistence.repositories.carteira_repository import CarteiraRepository
 from api.models.carteira_models import (
     Carteira, CarteiraCriada, DepositoRequest, SaldoCarteira, 
     SaqueRequest, TransacaoResponse, ConversaoRequest, 
-    ConversaoResponse, CotacaoResponse
+    ConversaoResponse, CotacaoResponse, TransferenciaRequest, TransferenciaResponse
 )
 
 
@@ -17,14 +17,6 @@ router = APIRouter(prefix="/carteiras", tags=["carteiras"])
 def get_carteira_service() -> CarteiraService:
     repo = CarteiraRepository()
     return CarteiraService(repo)
-
-
-@router.on_event("shutdown")
-async def shutdown_event():
-    """Fecha o serviço da Coinbase ao desligar o app"""
-    service = get_carteira_service()
-    await service.close()
-
 
 @router.post("", response_model=CarteiraCriada, status_code=201)
 def criar_carteira(
@@ -151,12 +143,7 @@ async def obter_cotacao(
     service: CarteiraService = Depends(get_carteira_service),
 ):
     """
-    Obtém cotação entre duas moedas usando a API da Coinbase.
-    
-    Exemplos:
-    - /cotacoes/BTC/USD (Bitcoin para Dólar)
-    - /cotacoes/ETH/BTC (Ethereum para Bitcoin)
-    - /cotacoes/USD/BRL (Dólar para Real)
+    Obtém cotação entre duas moedas.
     """
     try:
         return await service.obter_cotacao(moeda_base.upper(), moeda_alvo.upper())
@@ -165,6 +152,65 @@ async def obter_cotacao(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.post("/{endereco_origem}/transferencias", response_model=TransferenciaResponse, status_code=201)
+def realizar_transferencia(
+    endereco_origem: str,
+    transferencia: TransferenciaRequest,
+    service: CarteiraService = Depends(get_carteira_service),
+):
+    """
+    Realiza transferência de fundos entre carteiras.
+    
+    - **endereco_destino**: Endereço da carteira destino
+    - **id_moeda**: ID da moeda a ser transferida
+    - **valor**: Valor a ser transferido (deve ser positivo)
+    - **hash_chave**: Hash da chave privada da carteira origem para autenticação
+    
+    Taxa aplicada: 1% do valor da transferência
+    """
+    try:
+        return service.realizar_transferencia(endereco_origem, transferencia)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{endereco_carteira}/transferencias", response_model=List[Dict[str, Any]])
+def listar_transferencias(
+    endereco_carteira: str,
+    service: CarteiraService = Depends(get_carteira_service),
+):
+    """
+    Lista todas as transferências relacionadas a uma carteira
+    (tanto como origem quanto como destino).
+    """
+    try:
+        transferencias = service.obter_transferencias(endereco_carteira)
+        return transferencias
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/transferencias/{id_transferencia}", response_model=Dict[str, Any])
+def buscar_transferencia(
+    id_transferencia: int,
+    service: CarteiraService = Depends(get_carteira_service),
+):
+    """
+    Busca uma transferência específica pelo ID.
+    """
+    try:
+        transferencia = service.obter_transferencia(id_transferencia)
+        if not transferencia:
+            raise ValueError("Transferência não encontrada")
+        return transferencia
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/hello-world", response_model=str)
 def hello_world():
