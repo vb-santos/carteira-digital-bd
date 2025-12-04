@@ -26,6 +26,25 @@ class SaldoCarteira(BaseModel):
     saldo: float
     data_atualizacao: datetime
 
+class ConversaoRequest(BaseModel):
+    id_moeda_origem: int
+    id_moeda_destino: int
+    valor_origem: float
+    hash_chave: str
+
+class ConversaoResponse(BaseModel):
+    id_conversao: int
+    endereco_carteira: str
+    id_moeda_origem: int
+    id_moeda_destino: int
+    valor_origem: float
+    valor_destino: float
+    taxa_percentual: float
+    cotacao_utilizada: float
+    data_hora: datetime
+    saldo_origem_final: float
+    saldo_destino_final: float
+
 class TransacaoResponse(BaseModel):
     id_transacao: int
     tipo: Literal["DEPOSITO", "SAQUE"]
@@ -35,3 +54,9 @@ class TransacaoResponse(BaseModel):
     taxa_valor: float
     data_operacao: datetime
     saldo_final: float
+    
+class CotacaoResponse(BaseModel):
+    moeda_base: str
+    moeda_alvo: str
+    cotacao: float
+    timestamp: datetime
