@@ -7,6 +7,7 @@ def create_app() -> FastAPI:
         title="Carteira Digital API",
         version="1.0.0",
         description="API educacional de carteira digital com SQL puro e FastAPI.",
+        swagger_ui_parameters={"operationsSorter": "method"},
     )
 
     app.include_router(carteiras_router)
