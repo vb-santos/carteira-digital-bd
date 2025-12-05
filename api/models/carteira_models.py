@@ -18,7 +18,7 @@ class DepositoRequest(BaseModel):
 class SaqueRequest(BaseModel):
     id_moeda: int
     valor: float
-    hash_chave: str
+    chave_privada: str
 
 class SaldoCarteira(BaseModel):
     endereco_carteira: str
@@ -30,13 +30,13 @@ class ConversaoRequest(BaseModel):
     id_moeda_origem: int
     id_moeda_destino: int
     valor_origem: float
-    hash_chave: str
+    chave_privada: str
     
 class TransferenciaRequest(BaseModel):
     endereco_destino: str
     id_moeda: int
     valor: float
-    hash_chave: str
+    chave_privada: str
 
 class ConversaoResponse(BaseModel):
     id_conversao: int

@@ -110,12 +110,14 @@ class CarteiraRepository:
 
         return dict(row) if row else None
     
-    def validar_chave_privada(self, endereco: str, hash_chave_privada: str) -> bool:
+    def validar_chave_privada(self, endereco: str, chave_privada: str) -> bool:
         carteira = self.buscar_por_endereco(endereco)
         if not carteira:
             return False
         
-        return hash_chave_privada == carteira['hash_chave_privada']
+        hash_privada = hashlib.sha256(chave_privada.encode()).hexdigest()
+
+        return hash_privada == carteira['hash_chave_privada']
 
     def obter_saldo(self, endereco: str, id_moeda: int) -> Optional[SaldoCarteira]:
         with get_connection() as conn:

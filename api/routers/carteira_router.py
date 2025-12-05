@@ -123,7 +123,7 @@ async def realizar_conversao(
     - **id_moeda_origem**: ID da moeda a ser convertida
     - **id_moeda_destino**: ID da moeda de destino
     - **valor_origem**: Valor a ser convertido (deve ser positivo)
-    - **hash_chave**: Hash da chave privada para autenticação
+    - **chave_privada**: chave privada para autenticação
     
     Usa a API da Coinbase para obter cotações em tempo real.
     Aplica uma taxa de 0.5% para a conversão.
@@ -164,7 +164,7 @@ def realizar_transferencia(
     - **endereco_destino**: Endereço da carteira destino
     - **id_moeda**: ID da moeda a ser transferida
     - **valor**: Valor a ser transferido (deve ser positivo)
-    - **hash_chave**: Hash da chave privada da carteira origem para autenticação
+    - **chave_privada**: chave privada da carteira origem para autenticação
     
     Taxa aplicada: 1% do valor da transferência
     """

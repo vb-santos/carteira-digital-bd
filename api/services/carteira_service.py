@@ -89,7 +89,7 @@ class CarteiraService:
             raise ValueError("Carteira não encontrada ou bloqueada")
         if saque.valor <= 0:
             raise ValueError("Valor do saque deve ser positivo")
-        if not self.carteira_repo.validar_chave_privada(endereco_carteira, saque.hash_chave):
+        if not self.carteira_repo.validar_chave_privada(endereco_carteira, saque.chave_privada):
             raise ValueError("Chave privada inválida")
         result = self.carteira_repo.registrar_saque(endereco_carteira, saque.id_moeda, saque.valor)
         return TransacaoResponse(
@@ -141,7 +141,7 @@ class CarteiraService:
         if not carteira or carteira["status"] != "ATIVA":
             raise ValueError("Carteira não encontrada ou bloqueada")
         
-        if not self.carteira_repo.validar_chave_privada(endereco_carteira, conversao.hash_chave):
+        if not self.carteira_repo.validar_chave_privada(endereco_carteira, conversao.chave_privada):
             raise ValueError("Chave privada inválida")
         
         if conversao.id_moeda_origem == conversao.id_moeda_destino:
@@ -210,7 +210,7 @@ class CarteiraService:
         if transferencia.valor <= 0:
             raise ValueError("Valor da transferência deve ser positivo")
         
-        if not self.carteira_repo.validar_chave_privada(endereco_origem, transferencia.hash_chave):
+        if not self.carteira_repo.validar_chave_privada(endereco_origem, transferencia.chave_privada):
             raise ValueError("Chave privada inválida")
         
         if endereco_origem == transferencia.endereco_destino:
