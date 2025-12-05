@@ -211,7 +211,3 @@ def buscar_transferencia(
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-@router.get("/hello-world", response_model=str)
-def hello_world():
-    return "hello world"
